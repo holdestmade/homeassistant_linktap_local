@@ -1,0 +1,18 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "description": "Enter the local IP address (or hostname) of your Linktap gateway.",
+        "data": {
+          "Local IP Address of Gateway": "Local IP Address of Gateway"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the gateway. Check the IP address and that the local HTTP API is enabled."
+    },
+    "abort": {
+      "already_configured": "This gateway is already configured."
+    }
+  }
+}

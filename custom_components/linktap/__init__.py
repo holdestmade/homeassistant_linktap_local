@@ -4,17 +4,11 @@ import random
 from datetime import timedelta
 from json.decoder import JSONDecodeError
 
-import async_timeout
-import homeassistant.helpers.config_validation as cv
-import voluptuous as vol
-from h11 import Data
+import aiohttp
 from homeassistant import core
-from homeassistant.config_entries import SOURCE_IMPORT, ConfigEntry
-from homeassistant.exceptions import IntegrationError
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.exceptions import ConfigEntryNotReady, IntegrationError
 from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers.device_registry import DeviceEntryType
-from homeassistant.helpers.discovery import async_load_platform
-from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import (DataUpdateCoordinator,
                                                       UpdateFailed)
 
@@ -31,17 +25,12 @@ async def async_setup_entry(hass: core.HomeAssistant, entry: ConfigEntry)-> bool
 
     gw_ip = entry.data.get(GW_IP)
 
-    linker = LinktapLocal()
+    linker = LinktapLocal(hass)
     linker.set_ip(gw_ip)
     try:
-        gw_id = await linker.get_gw_id()
-    except JSONDecodeError:
-        try:
-            await asyncio.sleep(random.randint(1,3))
-            gw_id = await linker.get_gw_id()
-        except JSONDecodeError:
-            await asyncio.sleep(random.randint(1,3))
-            gw_id = await linker.get_gw_id()
+        gw_id = await linker.fetch_gw_id()
+    except (JSONDecodeError, aiohttp.ClientError, asyncio.TimeoutError) as err:
+        raise ConfigEntryNotReady(f"Unable to reach Linktap gateway at {gw_ip}: {err}") from err
 
     _LOGGER.debug(f"Found GW_ID: {gw_id}")
 
@@ -101,7 +90,7 @@ async def async_unload_entry(hass: core.HomeAssistant, entry: ConfigEntry) -> bo
     return unload_ok
 
 async def async_remove_config_entry_device(hass: core.HomeAssistant, entry: ConfigEntry, device) -> bool:
-    device_registry(hass).async_remove_device(device.id)
+    dr.async_get(hass).async_remove_device(device.id)
     return True
 
 class LinktapCoordinator(DataUpdateCoordinator):
@@ -111,18 +100,13 @@ class LinktapCoordinator(DataUpdateCoordinator):
             _LOGGER,
             name=DOMAIN,
             update_interval=timedelta(seconds=random.randint(10,14), milliseconds=random.randint(0,1000))
-            #update_interval=timedelta(seconds=13),
         )
         self.tap_api = linker
         self.conf = conf
-        self.hass = hass
         self.tap_id = tap_id
 
     def get_gw_id(self):
         return self.conf[GW_ID]
-
-    #def get_vol_unit(self):
-    #    return self.conf["vol_unit"]
 
     async def _async_update_data(self):
         """Fetch data from API endpoint.
@@ -130,24 +114,13 @@ class LinktapCoordinator(DataUpdateCoordinator):
         This is the place to pre-process the data to lookup tables
         so entities can quickly look up their data.
         """
-
-        #tap_id = self.conf["taps"][TAP_ID]
         gw_id = self.conf[GW_ID]
 
         try:
-            # Note: asyncio.TimeoutError and aiohttp.ClientError are already
-            # handled by the data update coordinator.
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 return await self.tap_api.fetch_data(gw_id, self.tap_id)
-        except:# ApiAuthError as err:
-            await asyncio.sleep(random.randint(1,3))
-            async with async_timeout.timeout(10):
-                return await self.tap_api.fetch_data(gw_id, self.tap_id)
-            # Raising ConfigEntryAuthFailed will cancel future updates
-            # and start a config flow with SOURCE_REAUTH (async_step_reauth)
-        #    raise ConfigEntryAuthFailed from err
-        #except ApiError as err:
-        #    raise UpdateFailed(f"Error communicating with API: {err}")
+        except (JSONDecodeError, aiohttp.ClientError, asyncio.TimeoutError) as err:
+            raise UpdateFailed(f"Error communicating with Linktap gateway: {err}") from err
 
 async def async_reload_entry(hass: core.HomeAssistant, entry: ConfigEntry) -> None:
     """Reload the config entry when it changed."""
