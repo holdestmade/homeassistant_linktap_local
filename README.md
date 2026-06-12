@@ -102,7 +102,7 @@ number (entered as a value in an input box, not a slider):
 
 Note: The volume unit is pulled from the gateway. It can either be in L or Gal.
 
-These control the watering time, volume, and pause duration when the valve for a tap is opened by Home Assistant (ignored if ANY OTHER mechanism is used to start watering, i.e. the manual button, the mobile app, or MQTT).
+These control the watering time, volume, and pause duration when the valve for a tap is opened by Home Assistant (ignored if ANY OTHER mechanism is used to start watering, i.e. the manual button or the mobile app).
 The water will turn off when either the Watering Duration or Watering Volume is reached (whichever comes first), unless the Watering Volume is set to 0, in which case it is ignored and only Watering Duration is considered.
 
 ## Services
