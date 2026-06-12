@@ -1,6 +1,8 @@
 import logging
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.const import (PERCENTAGE, UnitOfTime, UnitOfVolume,
+                                 UnitOfVolumeFlowRate)
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import (CoordinatorEntity,
                                                       DataUpdateCoordinator)
@@ -17,26 +19,34 @@ async def async_setup_entry(
     """Setup the sensor platform."""
     taps = hass.data[DOMAIN][config.entry_id]["conf"]["taps"]
     vol_unit = hass.data[DOMAIN][config.entry_id]["conf"]["vol_unit"]
+    # The gateway reports its volume unit as "L" or "Gal"; map these onto the
+    # units Home Assistant accepts for the water / volume_flow_rate device classes.
+    if str(vol_unit).lower().startswith("g"):
+        volume_unit = UnitOfVolume.GALLONS  # "gal"
+        flow_unit = UnitOfVolumeFlowRate.GALLONS_PER_MINUTE  # "gal/min"
+    else:
+        volume_unit = UnitOfVolume.LITERS  # "L"
+        flow_unit = UnitOfVolumeFlowRate.LITERS_PER_MINUTE  # "L/min"
     sensors = []
     for tap in taps:
         _LOGGER.debug(f"Configuring sensors for tap {tap}")
         coordinator = tap["coordinator"]
-        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="signal", unit="%", icon="mdi:percent-circle"))
-        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="battery", unit="%", device_class="battery"))
-        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="total_duration", unit="s", icon="mdi:clock"))
-        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="remain_duration", unit="s", icon="mdi:clock"))
-        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="speed", unit=f"{vol_unit}pm", icon="mdi:speedometer"))
-        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="volume", unit=vol_unit, device_class="water", icon="mdi:water-percent"))
-        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="volume_limit", unit=vol_unit, icon="mdi:water-percent"))
-        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="failsafe_duration", unit="s", icon="mdi:clock"))
-        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="plan_mode", unit="mode", icon="mdi:note"))
-        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="plan_sn", unit="sn", icon="mdi:note"))
-        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="plan_mode_string", unit="mode", icon="mdi:note"))
+        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="signal", unit=PERCENTAGE, state_class="measurement", icon="mdi:percent-circle"))
+        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="battery", unit=PERCENTAGE, device_class="battery", state_class="measurement"))
+        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="total_duration", unit=UnitOfTime.SECONDS, device_class="duration", state_class="measurement", icon="mdi:clock"))
+        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="remain_duration", unit=UnitOfTime.SECONDS, device_class="duration", state_class="measurement", icon="mdi:clock"))
+        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="speed", unit=flow_unit, device_class="volume_flow_rate", state_class="measurement", icon="mdi:speedometer"))
+        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="volume", unit=volume_unit, device_class="water", state_class="total_increasing", icon="mdi:water"))
+        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="volume_limit", unit=volume_unit, icon="mdi:water"))
+        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="failsafe_duration", unit=UnitOfTime.SECONDS, device_class="duration", state_class="measurement", icon="mdi:clock"))
+        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="plan_mode", unit=None, icon="mdi:note"))
+        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="plan_sn", unit=None, icon="mdi:note"))
+        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="plan_mode_string", unit=None, icon="mdi:note"))
     async_add_entities(sensors, True)
 
 class LinktapSensor(CoordinatorEntity, SensorEntity):
 
-    def __init__(self, coordinator: DataUpdateCoordinator, hass, tap, data_attribute, unit, device_class=False, icon=False):
+    def __init__(self, coordinator: DataUpdateCoordinator, hass, tap, data_attribute, unit, device_class=False, state_class=False, icon=False):
         super().__init__(coordinator)
         name = data_attribute.replace("_", " ").title()
         self._name = tap[NAME] + " " + name
@@ -46,15 +56,16 @@ class LinktapSensor(CoordinatorEntity, SensorEntity):
         self.tap_name = tap[NAME]
         self.platform = "sensor"
         self._attr_unique_id = slugify(f"{DOMAIN}_{self.platform}_{data_attribute}_{self.tap_id}")
-        self._attr_native_unit_of_measurement = unit
+        if unit is not None:
+            self._attr_native_unit_of_measurement = unit
         if icon:
             self._attr_icon = icon
         if device_class:
             self._attr_device_class = device_class
-            if device_class == "water":
-                # Volume resets to 0 at the end of each watering job, so
-                # total_increasing lets HA handle the resets natively.
-                self._attr_state_class = "total_increasing"
+        if state_class:
+            # The volume sensor resets to 0 at the end of each watering job, so
+            # total_increasing lets HA handle the resets natively for stats.
+            self._attr_state_class = state_class
 
         self._attr_device_info = DeviceInfo(
             identifiers={

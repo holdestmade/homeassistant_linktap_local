@@ -1,6 +1,7 @@
 import logging
 
 from homeassistant.components.number import RestoreNumber
+from homeassistant.const import UnitOfTime, UnitOfVolume
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import (CoordinatorEntity,
                                                       DataUpdateCoordinator)
@@ -18,14 +19,16 @@ async def async_setup_entry(
     """Setup the number platform."""
     taps = hass.data[DOMAIN][config.entry_id]["conf"]["taps"]
     vol_unit = hass.data[DOMAIN][config.entry_id]["conf"]["vol_unit"]
+    # Normalise the gateway's "L"/"Gal" onto Home Assistant's volume units.
+    volume_unit = UnitOfVolume.GALLONS if str(vol_unit).lower().startswith("g") else UnitOfVolume.LITERS
     numbers = []
     for tap in taps:
         """For each tap, we set a number for duration, volume, and pause duration"""
         _LOGGER.debug(f"Configuring numbers for tap {tap}")
         coordinator = tap["coordinator"]
-        numbers.append(LinktapNumber(coordinator, hass, tap, "Watering Duration", "mdi:clock", "m"))
-        numbers.append(LinktapNumber(coordinator, hass, tap, "Watering Volume", "mdi:water", vol_unit))
-        numbers.append(LinktapPauseDurationNumber(coordinator, hass, tap, "Pause Duration", "mdi:timer-pause", "h"))
+        numbers.append(LinktapNumber(coordinator, hass, tap, "Watering Duration", "mdi:clock", UnitOfTime.MINUTES))
+        numbers.append(LinktapNumber(coordinator, hass, tap, "Watering Volume", "mdi:water", volume_unit))
+        numbers.append(LinktapPauseDurationNumber(coordinator, hass, tap, "Pause Duration", "mdi:timer-pause", UnitOfTime.HOURS))
 
     async_add_entities(numbers, True)
 
