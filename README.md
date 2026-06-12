@@ -1,11 +1,6 @@
 A custom component for linktap tap and watering valve controllers.
 
-Install this Integration via the Home Assistant Community Store (HACS)
-
-Linktap already have an MQTT implementation, but for home assistant users its support is rudimentary. They have a more advanced mode of operation via MQTT, but it involves complicated manual setup of switches and sensors.
-This custom component replaces both of those mechanisms, and uses the locally available HTTP API.
-
-In short, its designed to replicate the "Instant Watering" functionality of the Linktapp app. Ie `water for x minutes`, or `until y volume is reached`.
+This custom component uses the locally available HTTP API.
 
 It requires just the configuration IP of your gateway. If you have more than 1 gateway, you can setup multiple instances of the integration.
 
@@ -63,7 +58,7 @@ number (entered as a value in an input box, not a slider):
 
 Note: The volume unit is pulled from the gateway. It can either be in L or Gal.
 
-These control the watering time, volume, and pause duration when the valve for a tap is opened by Home Assistant (ignored if ANY OTHER mechanism is used to start watering, i.e. the manual button, the mobile app, or MQTT).
+These control the watering time, volume, and pause duration when the valve for a tap is opened by Home Assistant (ignored if ANY OTHER mechanism is used to start watering, i.e. the manual button or the mobile app).
 The water will turn off when either the Watering Duration or Watering Volume is reached (whichever comes first), unless the Watering Volume is set to 0, in which case it is ignored and only Watering Duration is considered.
 
 ## Services
