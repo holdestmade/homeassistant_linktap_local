@@ -10,5 +10,5 @@
     "issue_tracker": "https://github.com/holdestmade/homeassistant_linktap_local",
     "loggers": ["linktap"],
     "requirements": ["tenacity"],
-    "version": "0.2.1"
+    "version": "0.3.0"
 }
