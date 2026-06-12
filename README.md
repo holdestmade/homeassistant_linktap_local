@@ -1,5 +1,7 @@
 A custom component for linktap tap and watering valve controllers.
 
+> **Credits:** This is a fork of the original [`linktap_local_http_component`](https://github.com/sh00t2kill/linktap_local_http_component) by [@sh00t2kill](https://github.com/sh00t2kill). All credit for the original integration goes to them; this fork adds bug fixes, Home Assistant compatibility updates and some behavioural changes (see [Changes in this fork](#changes-in-this-fork)).
+
 Install this Integration via the Home Assistant Community Store (HACS)
 
 Linktap already have an MQTT implementation, but for home assistant users its support is rudimentary. They have a more advanced mode of operation via MQTT, but it involves complicated manual setup of switches and sensors.
@@ -10,6 +12,43 @@ In short, its designed to replicate the "Instant Watering" functionality of the 
 It requires just the configuration IP of your gateway. If you have more than 1 gateway, you can setup multiple instances of the integration.
 
 A device is created for each tap found. Multi-valve TapLinkers or ValveLinkers will get a device created for each output.
+
+## Changes in this fork
+
+This fork builds on [@sh00t2kill](https://github.com/sh00t2kill)'s original integration with the following changes:
+
+**Bug fixes**
+- Fixed a crash in the switch's `is_on` property (the state string was being called as a function).
+- Removed a stray `from h11 import Data` import that could prevent the integration from loading.
+- Fixed `async_remove_config_entry_device` referencing an undefined name (it now uses the device registry correctly).
+- Fixed `JSONDecodeError` being raised with too few arguments, and removed unreachable/duplicate code.
+- Fixed the config flow's IP field defaulting to its own label text.
+
+**Home Assistant compatibility**
+- Uses Home Assistant's shared aiohttp session instead of creating a new session per request.
+- Replaced the deprecated `async_timeout` with the standard library `asyncio.timeout`.
+- Updated the manifest: `iot_class` is now `local_polling`, with `integration_type` and `loggers` added.
+- Modernised the config flow (current registration style), added connection validation, and used the gateway id as the unique id. Added translation strings.
+- Sensors now expose proper `native_value`/`native_unit_of_measurement`; binary sensors and the valve use `is_on`/`is_closed` instead of overriding `state`.
+- The update coordinator now raises `UpdateFailed` cleanly on errors.
+
+**Correct units of measurement**
+- Volume now uses valid HA water units (`L`/`gal`), fixing statistics for users with gallon gateways (the old `Gal` unit was rejected).
+- Flow speed uses `L/min`/`gal/min` with the `volume_flow_rate` device class (was `Lpm`/`Galpm`).
+- Duration sensors use the `duration` device class with seconds; battery/signal use the `%` constant with a measurement state class.
+- The Watering Duration number now uses minutes (`min`) — previously `m`, which means *months* in HA.
+- Removed made-up units (`mode`/`sn`) from the plan sensors.
+
+**Behavioural changes**
+- Renamed the `Plan SN` sensor to **Plan Serial Number** (`sensor.*_plan_serial_number`).
+- Removed the on/off switch that duplicated the valve; the valve now controls watering directly. Only the **Pause** switch remains.
+- All number entities (Watering Duration, Watering Volume, Pause Duration) are now entered in an input box instead of a slider.
+- Numeric sensors now display to 1 decimal place.
+
+**Cleanup**
+- Removed debug output, wildcard/unused imports, and other dead code across the integration.
+
+> Note for existing installs: entity ids are not renamed automatically — the renamed sensor and the removed switch keep their old ids in the entity registry until removed/re-added. The volume sensor's state class changed to `total_increasing`, so Home Assistant may re-baseline its long-term statistics.
 
 
 <b>How do I use this integration?</b>
