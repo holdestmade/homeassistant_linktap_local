@@ -14,8 +14,8 @@ A device is created for each tap found. Multi-valve TapLinkers or ValveLinkers w
 
 <b>How do I use this integration?</b>
 <p>
-Set the Watering Volume number entity and the Watering Duration number entity to your desired limits, and turn on the switch/valve. Whichever value is reached first will turn the switch/valve off. <br/>
-If you set the Watering Volume to 0, then the setting is ignored and the switch/valve will turn off when the Watering Duration is reached.
+Set the Watering Volume number entity and the Watering Duration number entity to your desired limits, and open the valve. Whichever value is reached first will close the valve. <br/>
+If you set the Watering Volume to 0, then the setting is ignored and the valve will close when the Watering Duration is reached.
 </p>
 For each device, multiple entities are created:<br>
 binary sensors:
@@ -53,9 +53,9 @@ sensors:
 | Failsafe Duration    | The failsafe duration set for the tap - This is not configurable via this integration. |
 | Plan Mode            | Current watering plan mode. A numerical identifier. |
 | Plan Mode String     | A translation of the plan mode into the terms matching the app |
-| Plan SN              | Serial number of the watering plan. A numerical identifier. |
+| Plan Serial Number   | Serial number of the watering plan. A numerical identifier. |
 
-number:
+number (entered as a value in an input box, not a slider):
 
 - Watering Duration (Defaults to 15 minutes)
 - Watering Volume (Defaults to 0)
@@ -63,7 +63,7 @@ number:
 
 Note: The volume unit is pulled from the gateway. It can either be in L or Gal.
 
-These control the watering time, volume, and pause duration when the switch for a tap is turned on by Home Assistant (ignored if ANY OTHER mechanism is used to start watering, i.e. the manual button, the mobile app, or MQTT).
+These control the watering time, volume, and pause duration when the valve for a tap is opened by Home Assistant (ignored if ANY OTHER mechanism is used to start watering, i.e. the manual button, the mobile app, or MQTT).
 The water will turn off when either the Watering Duration or Watering Volume is reached (whichever comes first), unless the Watering Volume is set to 0, in which case it is ignored and only Watering Duration is considered.
 
 ## Services
@@ -74,7 +74,7 @@ Pauses a tap for a specified number of hours.
 
 **Fields:**
 
-- `entity_id` (required): The switch entity to pause (e.g. `switch.linktap_fake_tap_1`).
+- `entity_id` (required): The pause switch entity to pause (e.g. `switch.pause_fake_tap_1`).
 - `hours` (optional, default: 1): Number of hours to pause the tap. If not specified, defaults to 1. If set to 0, unpauses the tap.
 
 ### `valve.pause_valve`
@@ -105,21 +105,20 @@ A special switch entity is created for each tap, named like `switch.pause_<tap_n
 
 This is useful for quickly pausing watering without needing to call a service or automation.
 
-switch:<br/>
-The tap controller itself. The switch has a number of attributes. In general these can be ignored, as they have matching sensors and binary_sensors, but are helpful in debugging.
+valve:<br/>
+The tap controller itself -- a valve is created for each tap. Opening the valve starts watering (respecting the Watering Duration / Watering Volume number entities); closing it stops watering.
+
+The valve has a number of attributes. In general these can be ignored, as they have matching sensors and binary_sensors, but are helpful in debugging.
 
 There are 3 additional attributes set by the integration itself.
 
 | Attribute Name           | Description  |
 |-----------------------|-----------------------------|
 | Duration Entity   | The entity the integration is using to control duration |
-| Default time | Is the time being sent set to the default? This will be true if either the number entity has never been changed, OR if the number enttiy cannot be found (eg because its been renamed -- dont do this!) |
-| Watering by Volume | Has a volume value been sent to the api when the switch/value was turned on |
+| Default time | Is the time being sent set to the default? This will be true if either the number entity has never been changed, OR if the number entity cannot be found (eg because its been renamed -- dont do this!) |
+| Watering by Volume | Has a volume value been sent to the api when the valve was opened |
 
-valve:<br/>
-A wrapper for the switch -- a valve for each tap
-
-Using the switch and the valve are functionally equivalent, and the entities should always remain in sync.
+Note: a dedicated on/off switch entity is no longer created, as it duplicated the valve. The only switch entity is the Pause switch described above.
 
 
 As yet there is no support for controlling scheduling. The API does have support for this, but unless there is demand for it, this is likely more clunky to manage in Home Assistant than the native app.
@@ -132,7 +131,7 @@ https://www.link-tap.com/#!/faq/en/What-is-the-difference-between-the-G1S-and-G2
 
 
 <b>Why do my taps always water for 15 mins, rather than the value defined by the duration number entity?</b><br />
-This is likely due to a mapping issue with the integration. Each switch has an attribute called `duration_entity`. This should match the entity created for duration. If not, please lodge an issue.<br />
+This is likely due to a mapping issue with the integration. Each valve has an attribute called `duration_entity`. This should match the entity created for duration. If not, please lodge an issue.<br />
 There is also an attribute called `Default Time`. If the duration entity matches, and has been changed from the default, this should be set to `false`. If not, again please lodge an issue. <br />
 This can also occur if you have renamed entities, as it uses some fuzzy logic name matching in order to get the duration. If you have renamed entities in HA, delete the integration, change the names as desired in the Linktap app, and re-add the integration again. <br />
 
