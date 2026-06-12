@@ -1,6 +1,6 @@
 import logging
 
-from homeassistant.components.number import RestoreNumber
+from homeassistant.components.number import NumberMode, RestoreNumber
 from homeassistant.const import UnitOfTime, UnitOfVolume
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import (CoordinatorEntity,
@@ -40,6 +40,7 @@ class LinktapNumber(CoordinatorEntity, RestoreNumber):
         self.tap_id = tap[TAP_ID]
         self.platform = "number"
         self._attr_unique_id = slugify(f"{DOMAIN}_{self.platform}_{self.tap_id}_{number_suffix.replace(' ', '_')}")
+        self._attr_mode = NumberMode.BOX
         self._attr_native_min_value = 0
         self._attr_native_max_value = 120
         self._attr_native_step = 5
@@ -90,6 +91,7 @@ class LinktapPauseDurationNumber(CoordinatorEntity, RestoreNumber):
         self.tap_id = tap[TAP_ID]
         self.platform = "number"
         self._attr_unique_id = slugify(f"{DOMAIN}_{self.platform}_{self.tap_id}_pause_duration")
+        self._attr_mode = NumberMode.BOX
         self._attr_native_min_value = 1
         self._attr_native_max_value = 240
         self._attr_native_step = 1

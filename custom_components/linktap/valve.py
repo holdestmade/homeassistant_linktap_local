@@ -1,17 +1,17 @@
 import logging
 
 import voluptuous as vol
-from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
 from homeassistant.components.valve import ValveEntity, ValveEntityFeature
-from homeassistant.const import (ATTR_ENTITY_ID, SERVICE_TURN_OFF,
-                                 SERVICE_TURN_ON)
+from homeassistant.const import STATE_UNKNOWN
 from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import (CoordinatorEntity,
                                                       DataUpdateCoordinator)
 from homeassistant.util import slugify
 
-from .const import ATTR_STATE, DOMAIN, GW_IP, MANUFACTURER, NAME, TAP_ID
+from .const import (ATTR_DEFAULT_TIME, ATTR_DURATION, ATTR_STATE, ATTR_VOL,
+                    ATTR_VOLUME, DEFAULT_TIME, DEFAULT_VOL, DOMAIN, GW_IP,
+                    MANUFACTURER, NAME, TAP_ID)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,6 +43,7 @@ class LinktapValve(CoordinatorEntity, ValveEntity):
         super().__init__(coordinator)
         self._name = tap[NAME]
         self.tap_id = tap[TAP_ID]
+        self.tap_api = coordinator.tap_api
         self.platform = "valve"
         self.hass = hass
         self._attr_supported_features = ValveEntityFeature.OPEN | ValveEntityFeature.CLOSE
@@ -62,38 +63,57 @@ class LinktapValve(CoordinatorEntity, ValveEntity):
         return f"{MANUFACTURER} {self._name}"
 
     @property
-    def switch_entity(self):
-        name = self._name.replace(" ", "_")
-        name = name.replace("-", "_")
-        return f"switch.{DOMAIN}_{name}".lower()
+    def duration_entity(self) -> str:
+        slug = slugify(self._name)
+        return f"number.{DOMAIN}_{slug}_watering_duration"
+
+    @property
+    def volume_entity(self) -> str:
+        slug = slugify(self._name)
+        return f"number.{DOMAIN}_{slug}_watering_volume"
+
+    def get_watering_duration(self):
+        entity = self.hass.states.get(self.duration_entity)
+        if not entity or entity.state == STATE_UNKNOWN:
+            _LOGGER.debug(f"Entity {self.duration_entity} unavailable -- using default")
+            return DEFAULT_TIME
+        return entity.state
+
+    def get_watering_volume(self):
+        entity = self.hass.states.get(self.volume_entity)
+        if not entity or entity.state == STATE_UNKNOWN:
+            _LOGGER.debug(f"Entity {self.volume_entity} unavailable -- using default")
+            return float(DEFAULT_VOL)
+        return float(entity.state)
 
     async def async_open_valve(self, **kwargs):
-        """Open the valve."""
-        await self.hass.services.async_call(
-            SWITCH_DOMAIN,
-            SERVICE_TURN_ON,
-            {ATTR_ENTITY_ID: self.switch_entity},
-            blocking=True,
-            context=self._context,
-        )
+        """Open the valve (start watering)."""
+        duration = self.get_watering_duration()
+        seconds = int(float(duration)) * 60
+        volume = self.get_watering_volume()
+        gw_id = self.coordinator.get_gw_id()
+        await self.tap_api.turn_on(gw_id, self.tap_id, seconds, volume)
         await self.coordinator.async_request_refresh()
 
     async def async_close_valve(self, **kwargs):
-        """Close valve."""
-        await self.hass.services.async_call(
-            SWITCH_DOMAIN,
-            SERVICE_TURN_OFF,
-            {ATTR_ENTITY_ID: self.switch_entity},
-            blocking=True,
-            context=self._context,
-        )
+        """Close the valve (stop watering)."""
+        gw_id = self.coordinator.get_gw_id()
+        await self.tap_api.turn_off(gw_id, self.tap_id)
         await self.coordinator.async_request_refresh()
 
     @property
     def extra_state_attributes(self):
+        duration_entity = self.hass.states.get(self.duration_entity)
+        is_default = duration_entity is None or duration_entity.state == STATE_UNKNOWN
+        volume = self.get_watering_volume()
         return {
             "data": self.coordinator.data,
-            "switch": self.switch_entity,
+            "duration_entity": self.duration_entity,
+            "volume_entity": self.volume_entity,
+            ATTR_DEFAULT_TIME: is_default,
+            ATTR_DURATION: self.get_watering_duration(),
+            ATTR_VOL: volume != 0,
+            ATTR_VOLUME: volume,
         }
 
     @property
@@ -108,7 +128,7 @@ class LinktapValve(CoordinatorEntity, ValveEntity):
             hours = 1
         _LOGGER.debug(f"Pausing {self.entity_id} for {hours} hours")
         gw_id = self.coordinator.get_gw_id()
-        await self.coordinator.tap_api.pause_tap(gw_id, self.tap_id, hours)
+        await self.tap_api.pause_tap(gw_id, self.tap_id, hours)
         await self.coordinator.async_request_refresh()
 
     async def _start_watering(self, seconds=False):
@@ -116,5 +136,5 @@ class LinktapValve(CoordinatorEntity, ValveEntity):
             seconds = 1439 * 60
         _LOGGER.debug(f"Starting watering via service call for {seconds} seconds")
         gw_id = self.coordinator.get_gw_id()
-        await self.coordinator.tap_api.turn_on(gw_id, self.tap_id, seconds)
+        await self.tap_api.turn_on(gw_id, self.tap_id, seconds)
         await self.coordinator.async_request_refresh()

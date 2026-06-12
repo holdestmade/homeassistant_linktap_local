@@ -39,17 +39,17 @@ async def async_setup_entry(
         sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="volume", unit=volume_unit, device_class="water", state_class="total_increasing", icon="mdi:water"))
         sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="volume_limit", unit=volume_unit, icon="mdi:water"))
         sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="failsafe_duration", unit=UnitOfTime.SECONDS, device_class="duration", state_class="measurement", icon="mdi:clock"))
-        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="plan_mode", unit=None, icon="mdi:note"))
-        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="plan_sn", unit=None, icon="mdi:note"))
-        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="plan_mode_string", unit=None, icon="mdi:note"))
+        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="plan_mode", unit=None, precision=None, icon="mdi:note"))
+        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="plan_sn", name="Plan Serial Number", unit=None, precision=None, icon="mdi:note"))
+        sensors.append(LinktapSensor(coordinator, hass, tap, data_attribute="plan_mode_string", unit=None, precision=None, icon="mdi:note"))
     async_add_entities(sensors, True)
 
 class LinktapSensor(CoordinatorEntity, SensorEntity):
 
-    def __init__(self, coordinator: DataUpdateCoordinator, hass, tap, data_attribute, unit, device_class=False, state_class=False, icon=False):
+    def __init__(self, coordinator: DataUpdateCoordinator, hass, tap, data_attribute, unit, name=False, device_class=False, state_class=False, precision=1, icon=False):
         super().__init__(coordinator)
-        name = data_attribute.replace("_", " ").title()
-        self._name = tap[NAME] + " " + name
+        display_name = name if name else data_attribute.replace("_", " ").title()
+        self._name = tap[NAME] + " " + display_name
         self._id = self._name
         self.attribute = data_attribute
         self.tap_id = tap[TAP_ID]
@@ -58,6 +58,8 @@ class LinktapSensor(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = slugify(f"{DOMAIN}_{self.platform}_{data_attribute}_{self.tap_id}")
         if unit is not None:
             self._attr_native_unit_of_measurement = unit
+        if precision is not None:
+            self._attr_suggested_display_precision = precision
         if icon:
             self._attr_icon = icon
         if device_class:
