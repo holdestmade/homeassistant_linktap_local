@@ -4,6 +4,7 @@ import re
 from json.decoder import JSONDecodeError
 
 import aiohttp
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from tenacity import (retry, retry_if_exception_type, stop_after_attempt,
                       wait_exponential)
 
@@ -15,17 +16,15 @@ _LOGGER = logging.getLogger(__name__)
 
 class LinktapLocal:
 
-    ip = False
-    gw_id = False
-
-    def __init__(self):
-        # Do nothing
-        print("Hello, its me!")
+    def __init__(self, hass):
+        self._hass = hass
+        self.ip = None
+        self.gw_id = None
 
     def set_ip(self, ip):
         self.ip = ip
 
-    def get_ip(self, ip):
+    def get_ip(self):
         return self.ip
 
     def set_gw_id(self, gw_id):
@@ -51,23 +50,23 @@ class LinktapLocal:
 
         headers = {"content-type": "application/json; charset=UTF-8"}
 
-        url = "http://" + self.ip + "/api.shtml"
+        url = f"http://{self.ip}/api.shtml"
 
-        async with aiohttp.ClientSession() as session:
-            async with await session.post(url, json=data, headers=headers) as resp:
-                status = resp.status
-                try:
-                    """Check if it's JSON formatted"""
-                    response = await resp.json()
-                except aiohttp.client_exceptions.ContentTypeError:
-                    """Fallback to html wrapped"""
-                    response = json.loads(self.clean_response(await resp.text()))
+        session = async_get_clientsession(self._hass)
+        async with session.post(url, json=data, headers=headers) as resp:
+            status = resp.status
+            try:
+                """Check if it's JSON formatted"""
+                response = await resp.json()
+            except aiohttp.client_exceptions.ContentTypeError:
+                """Fallback to html wrapped"""
+                response = json.loads(self.clean_response(await resp.text()))
 
         # Every now and then, a request will throw a 404.
         # Ive never seen it fail twice, so lets try it again.
         if status == 404:
             _LOGGER.debug("Got a 404 issue: Wait and try again")
-            raise JSONDecodeError("404 Not Found")
+            raise JSONDecodeError("404 Not Found", "", 0)
         return response
 
     async def fetch_data(self, gw_id, dev_id):
@@ -140,10 +139,11 @@ class LinktapLocal:
     """This is potentially a little hacky, as it actually sends a malformatted request to the gateway.
     The ID of the gateway is returned in this malformed request, so lets use it for good and not evil."""
 
-    async def get_gw_id(self):
+    async def fetch_gw_id(self):
         data = {"cmd": STATUS_CMD}
         status = await self._request(data)
-        return status["gw_id"]
+        self.gw_id = status["gw_id"]
+        return self.gw_id
 
     """alert: type of alert
     0: all types of alert.
@@ -165,5 +165,4 @@ class LinktapLocal:
             "enable": True,
         }
         status = await self._request(data)
-        return status["ret"] == 0
         return status["ret"] == 0

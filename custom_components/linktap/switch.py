@@ -1,27 +1,19 @@
-import asyncio
-import json
 import logging
-import random
-import re
 
-import aiohttp
-import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.const import STATE_UNKNOWN
-from homeassistant.helpers import entity_platform, service
-from homeassistant.helpers.entity import *
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (CoordinatorEntity,
                                                       DataUpdateCoordinator)
 from homeassistant.util import slugify
 
-_LOGGER = logging.getLogger(__name__)
-
 from .const import (ATTR_DEFAULT_TIME, ATTR_DURATION, ATTR_STATE, ATTR_VOL,
-                    ATTR_VOLUME, DEFAULT_TIME, DEFAULT_VOL, DOMAIN, GW_ID,
-                    GW_IP, MANUFACTURER, NAME, TAP_ID)
+                    ATTR_VOLUME, DEFAULT_TIME, DEFAULT_VOL, DOMAIN, GW_IP,
+                    MANUFACTURER, NAME, TAP_ID)
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -46,7 +38,6 @@ async def async_setup_entry(
 class LinktapSwitch(CoordinatorEntity, SwitchEntity):
     def __init__(self, coordinator: DataUpdateCoordinator, hass, tap):
         super().__init__(coordinator)
-        self._state = None
         self._name = tap[NAME]
         self._id = tap[TAP_ID]
         self.tap_id = tap[TAP_ID]
@@ -55,11 +46,6 @@ class LinktapSwitch(CoordinatorEntity, SwitchEntity):
         self.hass = hass
         self._attr_unique_id = slugify(f"{DOMAIN}_{self.platform}_{self.tap_id}")
         self._attr_icon = "mdi:water-pump"
-        self._attrs = {
-            "data": self.coordinator.data,
-            "duration_entity": self.duration_entity,
-            "volume_entity": self.volume_entity
-        }
         self._attr_device_info = DeviceInfo(
             identifiers={
                 (DOMAIN, tap[TAP_ID])
@@ -68,10 +54,6 @@ class LinktapSwitch(CoordinatorEntity, SwitchEntity):
             manufacturer=MANUFACTURER,
             configuration_url="http://" + tap[GW_IP] + "/"
         )
-
-    @property
-    def unique_id(self):
-        return self._attr_unique_id
 
     @property
     def name(self):
@@ -91,79 +73,57 @@ class LinktapSwitch(CoordinatorEntity, SwitchEntity):
         duration = self.get_watering_duration()
         seconds = int(float(duration)) * 60
         gw_id = self.coordinator.get_gw_id()
-        attributes = await self.tap_api.turn_on(gw_id, self.tap_id, seconds, self.get_watering_volume())
+        await self.tap_api.turn_on(gw_id, self.tap_id, seconds, self.get_watering_volume())
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs):
         gw_id = self.coordinator.get_gw_id()
-        attributes = await self.tap_api.turn_off(gw_id, self.tap_id)
+        await self.tap_api.turn_off(gw_id, self.tap_id)
         await self.coordinator.async_request_refresh()
 
     def get_watering_duration(self):
         entity = self.hass.states.get(self.duration_entity)
         if not entity:
             _LOGGER.debug(f"Entity {self.duration_entity} not found -- setting default")
-            duration = DEFAULT_TIME
-            self._attrs[ATTR_DEFAULT_TIME] = True
-        elif entity.state == STATE_UNKNOWN:
+            return DEFAULT_TIME
+        if entity.state == STATE_UNKNOWN:
             _LOGGER.debug(f"Entity {self.duration_entity} state unknown -- setting default")
-            duration = DEFAULT_TIME
-            self._attrs[ATTR_DEFAULT_TIME] = True
-        else:
-            duration = entity.state
-            self._attrs[ATTR_DEFAULT_TIME] = False
-        self._attrs[ATTR_DURATION] = duration
-        return duration
+            return DEFAULT_TIME
+        return entity.state
 
     def get_watering_volume(self):
         entity = self.hass.states.get(self.volume_entity)
         if not entity:
-            volume = DEFAULT_VOL
             _LOGGER.debug(f"Entity {self.volume_entity} not found -- setting default")
-            self._attrs[ATTR_VOL] = False
-        elif entity.state == STATE_UNKNOWN:
-            volume = DEFAULT_VOL
+            return float(DEFAULT_VOL)
+        if entity.state == STATE_UNKNOWN:
             _LOGGER.debug(f"Entity {self.volume_entity} state unknown -- setting default")
-            self._attrs[ATTR_VOL] = False
-        elif int(float(entity.state)) == 0:
-            volume = entity.state
-            _LOGGER.debug(f"Entity {self.volume_entity} set to 0 -- ignore")
-            self._attrs[ATTR_VOL] = False
-        else:
-            volume = entity.state
-            self._attrs[ATTR_VOL] = True
-        self._attrs[ATTR_VOLUME] = volume
-        return float(volume)
+            return float(DEFAULT_VOL)
+        return float(entity.state)
 
     @property
     def extra_state_attributes(self):
-        return self._attrs
-
-    @property
-    def state(self):
-        status = self.coordinator.data
-        self._attrs["data"] = status
-        _LOGGER.debug(f"Switch Status: {status}")
-        duration = self.get_watering_duration()
-        _LOGGER.debug(f"Set duration:{duration}")
+        duration_entity = self.hass.states.get(self.duration_entity)
+        is_default = duration_entity is None or duration_entity.state == STATE_UNKNOWN
         volume = self.get_watering_volume()
-        _LOGGER.debug(f"Set volume:{volume}")
-        self._attrs[ATTR_STATE] = status[ATTR_STATE]
-        state = "unknown"
-        if status[ATTR_STATE]:
-            state = "on"
-        elif not status[ATTR_STATE]:
-            state = "off"
-            _LOGGER.debug(f"Switch {self.name} state {state}")
-        return state
+        data = self.coordinator.data or {}
+        return {
+            "data": data,
+            "duration_entity": self.duration_entity,
+            "volume_entity": self.volume_entity,
+            ATTR_DEFAULT_TIME: is_default,
+            ATTR_DURATION: self.get_watering_duration(),
+            ATTR_VOL: volume != 0,
+            ATTR_VOLUME: volume,
+            ATTR_STATE: data.get(ATTR_STATE),
+        }
 
     @property
     def is_on(self):
-        return self.state()
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        return self._attr_device_info
+        data = self.coordinator.data
+        if not data or ATTR_STATE not in data:
+            return None
+        return bool(data[ATTR_STATE])
 
     async def _pause_tap(self, hours=None):
         if hours is None:
@@ -191,12 +151,6 @@ class LinktapPauseSwitch(CoordinatorEntity, SwitchEntity):
             manufacturer=MANUFACTURER,
             configuration_url="http://" + tap[GW_IP] + "/"
         )
-        self.coordinator = coordinator
-        self._attrs = {}
-
-    @property
-    def unique_id(self):
-        return self._attr_unique_id
 
     @property
     def name(self):
@@ -209,23 +163,19 @@ class LinktapPauseSwitch(CoordinatorEntity, SwitchEntity):
 
     @property
     def is_on(self):
-        status = self.coordinator.data
+        status = self.coordinator.data or {}
         return bool(status.get("is_paused", False))
-
-    @property
-    def extra_state_attributes(self):
-        return self._attrs
 
     async def async_turn_on(self, **kwargs):
         hours = 24
         _LOGGER.debug(f"PauseSwitch: Looking for {self.pause_duration_entity}")
         entity = self.hass.states.get(self.pause_duration_entity)
-        if entity and entity.state not in (None, "unknown"):
+        if entity and entity.state not in (None, STATE_UNKNOWN):
             _LOGGER.debug(f"PauseSwitch: Found pause duration entity {self.pause_duration_entity} with state {entity.state}")
             try:
                 hours = int(float(entity.state))
-            except Exception as e:
-                _LOGGER.warning(f"PauseSwitch: Could not parse pause duration, using default 1: {e}")
+            except (TypeError, ValueError) as e:
+                _LOGGER.warning(f"PauseSwitch: Could not parse pause duration, using default 24: {e}")
         await self._pause_tap(hours=hours)
         await self.coordinator.async_request_refresh()
 

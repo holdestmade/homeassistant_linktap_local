@@ -1,28 +1,19 @@
-import asyncio
-import json
 import logging
-import random
 
-import aiohttp
-import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
 from homeassistant.components.valve import ValveEntity, ValveEntityFeature
-from homeassistant.const import (ATTR_ENTITY_ID, CONF_ENTITY_ID,
-                                 SERVICE_TURN_OFF, SERVICE_TURN_ON, STATE_OFF,
-                                 STATE_ON)
-from homeassistant.core import Event, EventStateChangedData, callback
+from homeassistant.const import (ATTR_ENTITY_ID, SERVICE_TURN_OFF,
+                                 SERVICE_TURN_ON)
 from homeassistant.helpers import entity_platform
-from homeassistant.helpers.entity import *
 from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (CoordinatorEntity,
                                                       DataUpdateCoordinator)
 from homeassistant.util import slugify
 
-_LOGGER = logging.getLogger(__name__)
-
 from .const import ATTR_STATE, DOMAIN, GW_IP, MANUFACTURER, NAME, TAP_ID
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -50,7 +41,6 @@ async def async_setup_entry(
 class LinktapValve(CoordinatorEntity, ValveEntity):
     def __init__(self, coordinator: DataUpdateCoordinator, hass, tap):
         super().__init__(coordinator)
-        self._state = None
         self._name = tap[NAME]
         self.tap_id = tap[TAP_ID]
         self.platform = "valve"
@@ -58,10 +48,6 @@ class LinktapValve(CoordinatorEntity, ValveEntity):
         self._attr_supported_features = ValveEntityFeature.OPEN | ValveEntityFeature.CLOSE
         self._attr_reports_position = False
         self._attr_unique_id = slugify(f"{DOMAIN}_{self.platform}_{self.tap_id}")
-        self._attrs = {
-            "data": self.coordinator.data,
-            "switch": self.switch_entity,
-        }
         self._attr_device_info = DeviceInfo(
             identifiers={
                 (DOMAIN, tap[TAP_ID])
@@ -70,10 +56,6 @@ class LinktapValve(CoordinatorEntity, ValveEntity):
             manufacturer=MANUFACTURER,
             configuration_url="http://" + tap[GW_IP] + "/"
         )
-
-    @property
-    def unique_id(self):
-        return self._attr_unique_id
 
     @property
     def name(self):
@@ -109,38 +91,17 @@ class LinktapValve(CoordinatorEntity, ValveEntity):
 
     @property
     def extra_state_attributes(self):
-        return self._attrs
-
-    @callback
-    def async_state_changed_listener(
-        self, event: Event[EventStateChangedData] | None = None
-    ) -> None:
-        """Handle child updates."""
-        super().async_state_changed_listener(event)
-        if (
-            not self.available
-            or (state := self.hass.states.get(self.switch_entity)) is None
-        ):
-            return
-
-        self._attr_is_closed = self._attrs[ATTR_STATE] != STATE_ON
+        return {
+            "data": self.coordinator.data,
+            "switch": self.switch_entity,
+        }
 
     @property
-    def state(self):
-        status = self.coordinator.data
-        self._attrs[ATTR_STATE] = status[ATTR_STATE]
-        state = "unknown"
-        if status[ATTR_STATE]:
-            state = "open"
-        elif not status[ATTR_STATE]:
-            state = "closed"
-            _LOGGER.debug(f"Valve {self.name} state {state}")
-        self._attr_is_closed = state != "open"
-        return state
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        return self._attr_device_info
+    def is_closed(self):
+        data = self.coordinator.data
+        if not data or ATTR_STATE not in data:
+            return None
+        return not bool(data[ATTR_STATE])
 
     async def _pause_tap(self, hours=None):
         if hours is None:

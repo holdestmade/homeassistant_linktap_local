@@ -1,33 +1,21 @@
-import asyncio
-import json
 import logging
-import random
 
-import aiohttp
-import homeassistant.helpers.config_validation as cv
-import voluptuous as vol
 from homeassistant.components.binary_sensor import BinarySensorEntity
-from homeassistant.helpers import entity_platform, service
-from homeassistant.helpers.entity import *
+from homeassistant.helpers import entity_platform
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import (CoordinatorEntity,
                                                       DataUpdateCoordinator)
 from homeassistant.util import slugify
 
-_LOGGER = logging.getLogger(__name__)
+from .const import DOMAIN, GW_IP, MANUFACTURER, NAME, TAP_ID
 
-from .const import DOMAIN, GW_ID, GW_IP, MANUFACTURER, NAME, TAP_ID
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
     hass, config, async_add_entities, discovery_info=None
 ):
-    """Setup the sensor platform."""
-    #config_id = config.unique_id
-    #_LOGGER.debug(f"Configuring binary sensor entities for config {config_id}")
-    #if config_id not in hass.data[DOMAIN]:
-    #    await asyncio.sleep(random.randint(1,3))
-    #taps = hass.data[DOMAIN][config_id]["conf"]["taps"]
+    """Setup the binary sensor platform."""
     taps = hass.data[DOMAIN][config.entry_id]["conf"]["taps"]
     binary_sensors = []
     for tap in taps:
@@ -52,7 +40,6 @@ class LinktapBinarySensor(CoordinatorEntity, BinarySensorEntity):
 
     def __init__(self, coordinator: DataUpdateCoordinator, hass, tap, data_attribute, name=False, device_class=False, icon=False):
         super().__init__(coordinator)
-        self._state = None
         if not name:
             name = data_attribute.replace("_", " ").title()
         self._name = tap[NAME] + " " + name
@@ -67,9 +54,7 @@ class LinktapBinarySensor(CoordinatorEntity, BinarySensorEntity):
             self._attr_device_class = device_class
         if icon:
             self._attr_icon = icon
-        self._attrs = {}
         self._attr_device_info = DeviceInfo(
-            #entry_type=DeviceEntryType.SERVICE,
             identifiers={
                 (DOMAIN, tap[TAP_ID])
             },
@@ -80,31 +65,15 @@ class LinktapBinarySensor(CoordinatorEntity, BinarySensorEntity):
         )
 
     @property
-    def unique_id(self):
-        """Return the unique ID of the sensor."""
-        return self._attr_unique_id
-
-    @property
     def name(self):
         return f"{MANUFACTURER} {self._name}"
 
     @property
-    def extra_state_attributes(self):
-        return self._attrs
-
-    @property
-    def state(self):
+    def is_on(self):
         attributes = self.coordinator.data
-        if self._data_check_attribute in attributes:
-            data_attr = attributes[self._data_check_attribute]
-            state = "on" if data_attr else "off"
-        else:
-            state = "unknown"
-        return state
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        return self._attr_device_info
+        if not attributes or self._data_check_attribute not in attributes:
+            return None
+        return bool(attributes[self._data_check_attribute])
 
     async def _dismiss_alerts(self):
         _LOGGER.debug(f"Dismissing all alerts for {self.entity_id}")
